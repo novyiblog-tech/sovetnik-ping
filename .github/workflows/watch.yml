@@ -1,11 +1,31 @@
 name: watch
+# Расписание GitHub у публичного репо срабатывает раз в 3–4 часа (замер 07–08.11), поэтому один запуск
+# пингует слежку каждые 2 минуты ~5,5 ч и сам запускает следующий. Расписание — страховка, если цепочка оборвётся.
 on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+concurrency:
+  group: watch
+  cancel-in-progress: false
+permissions:
+  actions: write
+  contents: read
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 350
     steps:
-      - run: curl -fsS --max-time 30 "${{ secrets.WATCH_URL }}"
+      - name: ping every 2 min
+        run: |
+          end=$((SECONDS + 5*3600 + 30*60))
+          while [ $SECONDS -lt $end ]; do
+            curl -fsS --max-time 30 "${{ secrets.WATCH_URL }}" || echo "ping failed"
+            echo
+            sleep 120
+          done
+      - name: chain next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run watch.yml -R "${{ github.repository }}"
